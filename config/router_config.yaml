@@ -1,0 +1,83 @@
+version: "2.0"
+
+#路由策略
+default_strategy: "balanced"
+
+default_model: "gpt-4.1"
+#降级链：
+# 降级链：从最强 → 最稳 → 最便宜，兼顾质量、语言、成本
+fallback_chain:
+  - gpt-4.1                   # ① 最强也最贵，先招呼
+  - claude-3-7-sonnet-20250219 # ② 次强，长文本+代码兜底
+  - kimi-k2-0711-preview       # ③ 中文好、便宜、速度快
+  - qwen-max-2025-01-25        # ④ 最便宜，末级兜底
+
+#路由策略
+rules:
+  - name: "代码类问题"
+    condition: "intent == 'code'"
+    pool:
+      - claude-3-5-sonnet-20241022
+      - gpt-4.1
+
+  - name: "医疗健康问题"
+    condition: "intent == 'medical'"
+    pool:
+      - gpt-4.1
+      - qwen-max-2025-01-25
+
+  - name: "免费用户限制"
+    condition: "user_tier == 'free'"
+    pool:
+      - kimi-k2-0711-preview
+      - qwen-max-2025-01-25
+
+# 模型配置
+# ===== 模型配置（2025-07 官网价） =====
+models:
+  gpt-4.1:
+    name: "gpt-4.1"
+    provider: openai
+    price_per_1k: 0.036
+    max_rpm: 10000
+    quality_score: 0.97
+    latency_ms: 1100
+    supported_intents: ["general", "medical", "code", "analysis", "creative", "legal", "reasoning"]
+    max_tokens: 256000
+    languages: ["en", "zh", "ja", "ko", "es", "fr"]
+
+  claude-3-7-sonnet-20250219:
+    name: "claude-3-7-sonnet-20250219"
+    provider: anthropic
+    price_per_1k: 0.042
+    max_rpm: 2000
+    quality_score: 0.95
+    latency_ms: 900
+    supported_intents: ["code", "analysis", "reasoning", "creative", "medical", "writing"]
+    max_tokens: 200000
+    languages: ["en", "zh"]
+
+  kimi-k2-0711-preview:
+    name: "kimi-k2-0711-preview"
+    provider: moonshot
+    price_per_1k: 0.018
+    max_rpm: 3000
+    quality_score: 0.93
+    latency_ms: 600
+    supported_intents: ["general", "chinese", "creative", "analysis", "writing"]
+    max_tokens: 128000
+    languages: ["zh", "en"]
+
+  qwen-max-2025-01-25:
+    name: "qwen-max-2025-01-25"
+    provider: alibaba
+    price_per_1k: 0.012
+    max_rpm: 3000
+    quality_score: 0.91
+    latency_ms: 400
+    supported_intents: ["chinese", "code", "math", "general"]
+    max_tokens: 32768
+    languages: ["zh", "en"]
+
+
+
