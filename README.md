@@ -13,7 +13,7 @@
 - **智能缓存**: 对确定性请求（`temperature=0.0`）进行缓存，并根据意图设置不同的TTL（例如，代码问题缓存24小时，医疗问题不缓存）。
 - **真实成本计算**: 调用后根据实际使用的模型和Token数量，返回精确的成本（价格来源于YAML配置）。
 - **健康检查与管理**: 提供 `/health` 端点监控服务状态，并可通过管理接口动态调整模型健康状况。
-
+ **交互式演示**: 内置 **Gradio Web UI**，可直观体验路由逻辑与模型效果。
 ## 📦 技术栈
 
 - **框架**: FastAPI
@@ -26,4 +26,4 @@
 ### 1. 安装依赖
 
 ```bash
-pip install fastapi uvicorn pydantic pyyaml langchain-openai
+pip install fastapi uvicorn pydantic pyyaml langchain-openai gradio
