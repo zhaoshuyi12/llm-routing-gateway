@@ -2,7 +2,7 @@
 import gradio as gr
 import requests
 BACKEND_URL = "http://localhost:8000/v1/chat"
-
+BASE_URL = "http://localhost:8000"
 
 def route_query(query: str, user_tier: str):
     """
@@ -48,6 +48,44 @@ def route_query(query: str, user_tier: str):
     except Exception as e:
         return f"❌ 发生错误: {str(e)}", "", "", "", ""
 
+
+def route_query_stream(query: str, user_tier: str):
+    """
+    流式读取后端结果并更新 UI
+    """
+    if not query.strip():
+        # 返回默认占位符，保持输出长度与 outputs 列表一致
+        yield "请输入问题", "N/A", "N/A", "N/A", "N/A"
+        return
+
+    payload = {
+        "query": query.strip(),
+        "user_tier": user_tier.lower(),
+        "temperature": 0.0,
+        "max_tokens": 1000
+    }
+
+    try:
+        # 注意：这里调用的是我们上一阶段在 FastAPI 中新增的 /v1/stream_chat 接口
+        with requests.post(f"{BASE_URL}/v1/stream_chat", json=payload, stream=True, timeout=60) as r:
+            if r.status_code != 200:
+                yield f"❌ 错误: {r.text}", "N/A", "N/A", "N/A", "N/A"
+                return
+
+            partial_text = ""
+            # 这里的逻辑是逐块获取 AI 返回的文字并立即 yield 给 Gradio
+            for chunk in r.iter_content(chunk_size=None):
+                if chunk:
+                    decoded_chunk = chunk.decode("utf-8")
+                    partial_text += decoded_chunk
+                    # 依次对应 UI 中的 outputs：回答, 路由详情, 模型, 意图, 成本
+                    yield partial_text, "⏳ 正在生成详情...", "正在确定...", "分析中...", "计算中..."
+
+            # 生成结束后，最后可以发一次完整的状态（可选）
+            yield partial_text, "✅ 生成完成", "已锁定", "已锁定", "已计算"
+
+    except Exception as e:
+        yield f"❌ 请求异常: {str(e)}", "N/A", "N/A", "N/A", "N/A"
 
 # 自定义 CSS（可选：让界面更美观）
 custom_css = """
@@ -95,14 +133,14 @@ with gr.Blocks(css=custom_css, title="LLM 路由网关") as demo:
 
     # 绑定事件
     submit_btn.click(
-        fn=route_query,
+        fn=route_query_stream,
         inputs=[query_input, tier_input],
         outputs=[answer_output, details_output, model_badge, intent_badge, cost_badge]
     )
 
     # 支持回车发送
     query_input.submit(
-        fn=route_query,
+        fn=route_query_stream,
         inputs=[query_input, tier_input],
         outputs=[answer_output, details_output, model_badge, intent_badge, cost_badge]
     )

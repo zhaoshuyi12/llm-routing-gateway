@@ -8,6 +8,9 @@ from router.intent_classifier import IntentRouter
 from router.engine import RouterEngine
 from router.model_service import ModelService
 from router.cache import SmartCache, CacheKeyGenerator
+from fastapi.responses import StreamingResponse
+
+from router.semantic_utils import SemanticMatcher
 
 # -------------------- 初始化 --------------------
 app = FastAPI(title="智能大模型路由网关（YAML价格+真调用）", version="2.0")
@@ -17,7 +20,8 @@ intent_cls    = IntentRouter()
 model_svc     = ModelService(engine.get_all_candidates(), engine)  # 注入引擎→读价格
 cache         = SmartCache(max_size=5000, default_ttl=1800)
 cache.start_cleanup_task(interval=600)               # 后台 10 分钟清一次
-
+# 初始化语义匹配器
+semantic_matcher = SemanticMatcher(threshold=0.95)
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     start = time.time()
@@ -35,7 +39,11 @@ async def chat(req: ChatRequest):
             return ChatResponse(
                 text=hit, model="cache", cost=0.0,
                 latency=round(time.time() - start, 3), intent=intent)
-
+    query_vector=await semantic_matcher.get_embeddings(req.query)
+    semantic_hit=semantic_matcher.find_match(query_vector)
+    if semantic_hit:
+        return ChatResponse(
+            text=semantic_hit, model="SemanticCache", cost=0.0,latency=0.01)
     # 3. 选模型（读 YAML 价格 & 规则）
     primary = engine.select_model(
         model_svc.get_available(), req.user_tier, intent)
@@ -49,7 +57,7 @@ async def chat(req: ChatRequest):
     print(all_candidates)
     for  model_name in all_candidates:
         try:
-            text    = model_svc.call(model_name, req.query, req.max_tokens)
+            text    =  await model_svc.call(model_name, req.query, req.max_tokens)
             actual_model = model_name
             break
         except:
@@ -62,7 +70,8 @@ async def chat(req: ChatRequest):
     if cache_key:
         #根据意图设置缓存过期时间
         cache.set_with_intent(cache_key, text, intent)
-
+    cache.set(cache_key, text)
+    semantic_matcher.add(query_vector,text)
     return ChatResponse(
         text=text, model=actual_model, cost=round(cost, 6),
         latency=round(latency, 3), intent=intent)
@@ -93,7 +102,12 @@ async def set_health(model: str, healthy: bool):
 async def cache_clear():
     cache.clear()
     return {"message": "cache cleared"}
-
+@app.get("/v1/steam_chat")
+async def steam_chat(query: str, user_tier: UserTier = UserTier.Free):
+    intent=intent_cls.predict(query)
+    target_model=engine.select_model(model_svc.get_available(), user_tier, intent)
+    return StreamingResponse(model_svc.steam_call(target_model, query, 1000),
+                             media_type='text/event-stream')
 # -------------------- 启动 --------------------
 if __name__ == "__main__":
     import uvicorn
