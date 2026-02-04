@@ -1,29 +1,34 @@
 # 智能大模型路由网关 (Intelligent LLM Routing Gateway)
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)](https://www.python.org/)
+> 一个轻量级、高性能、可配置的大模型智能调度系统，解决多模型调用中的 **成本高、供应商单点故障、重复请求浪费** 三大痛点。
 
-这是一个基于 **YAML 配置驱动**的智能大模型路由网关。它能够根据用户等级、查询意图和成本效益，动态地从多个大语言模型（LLM）中选择最优模型进行调用，并内置了智能缓存机制以提升性能和降低成本。
+通过 **用户等级感知 + 意图识别 + 语义缓存 + 自动降级**，实现“该贵时贵，该省时省”的智能调度策略。
 
-## 🌟 核心特性
+[![Demo](https://img.shields.io/badge/Demo-Gradio_Interface-blue?logo=gradio)](#-在线演示)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 
-- **意图识别**: 自动分析用户查询的意图（如 `code`, `medical`, `chinese` 等），并据此路由到最合适的模型。
-- **动态模型路由**: 基于 YAML 配置文件，结合用户等级（Free, Basic, Premium）、意图和模型画像（价格、质量、支持意图）进行智能打分和选择。
-- **降级策略**: 当首选模型不可用时，自动按预设的降级链（Fallback Chain）尝试其他模型，保障服务高可用。
-- **智能缓存**: 对确定性请求（`temperature=0.0`）进行缓存，并根据意图设置不同的TTL（例如，代码问题缓存24小时，医疗问题不缓存）。
-- **真实成本计算**: 调用后根据实际使用的模型和Token数量，返回精确的成本（价格来源于YAML配置）。
-- **健康检查与管理**: 提供 `/health` 端点监控服务状态，并可通过管理接口动态调整模型健康状况。
-- **交互式演示**: 内置 **Gradio Web UI**，可直观体验路由逻辑与模型效果。
-## 📦 技术栈
+---
 
-- **框架**: FastAPI
-- **配置**: Pydantic + YAML
-- **缓存**: 自定义线程安全的 `SmartCache`
-- **意图分类**: 基于正则表达式的轻量级 `IntentRouter`
+## 🔑 核心特性
 
-## 🚀 快速开始
+### 1. **智能路由引擎**
+- 基于 **用户等级**（Free / Basic / Premium）和 **业务意图**（Code / Medical / General）动态选择模型
+- 三维度加权评分：**质量分 × 权重 + 成本效益 × 权重 + 意图匹配**
+- 支持 YAML 配置模型画像（价格、质量、支持意图、RPM 限制）
 
-### 1. 安装依赖
+### 2. **语义缓存（Semantic Caching）**
+- 使用 OpenAI Embedding 生成查询向量
+- 基于 NumPy 计算余弦相似度（默认阈值 `0.92`）
+- 对“字面不同但语义相近”请求（如“怎么退款？” vs “如何退钱？”）自动复用历史结果
+- ⚠️ **仅缓存公共意图查询**，避免跨用户数据泄露
+
+### 3. **容错与降级**
+- 配置静态 `fallback_chain`（如 `["kimi-k2-0711-preview", "gpt-4.1", "claude-3-7-sonnet-20250219","qwen-max-2025-01-25"]`）
+- 主模型失败（429/5xx）时自动切换备选，保障服务可用性
+
+### 4. **流式响应 & 异步架构**
+- 基于 FastAPI + `StreamingResponse` 实现 **首字毫秒级返回**
+- 全链路异步处理，避免大模型长 IO 阻塞
 
 ```bash
-pip install fastapi uvicorn pydantic pyyaml langchain-openai gradio
+pip install -r requirements.txt
