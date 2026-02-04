@@ -10,7 +10,7 @@ from router.model_service import ModelService
 from router.cache import SmartCache, CacheKeyGenerator
 from fastapi.responses import StreamingResponse
 
-from router.semantic_utils import SemanticMatcher
+from router.semantic_utils import SemanticMatcherFAISS
 
 # -------------------- 初始化 --------------------
 app = FastAPI(title="智能大模型路由网关（YAML价格+真调用）", version="2.0")
@@ -21,7 +21,7 @@ model_svc     = ModelService(engine.get_all_candidates(), engine)  # 注入引�
 cache         = SmartCache(max_size=5000, default_ttl=1800)
 cache.start_cleanup_task(interval=600)               # 后台 10 分钟清一次
 # 初始化语义匹配器
-semantic_matcher = SemanticMatcher(threshold=0.95)
+semantic_matcher = SemanticMatcherFAISS(threshold=0.95)
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     start = time.time()
@@ -39,11 +39,10 @@ async def chat(req: ChatRequest):
             return ChatResponse(
                 text=hit, model="cache", cost=0.0,
                 latency=round(time.time() - start, 3), intent=intent)
-    query_vector=await semantic_matcher.get_embeddings(req.query)
-    semantic_hit=semantic_matcher.find_match(query_vector)
+    semantic_hit=semantic_matcher.afind_match(req.query)
     if semantic_hit:
         return ChatResponse(
-            text=semantic_hit, model="SemanticCache", cost=0.0,latency=0.01)
+            text=semantic_hit, model="SemanticCache", cost=0.0,latency=round(time.time() - start, 3))
     # 3. 选模型（读 YAML 价格 & 规则）
     primary = engine.select_model(
         model_svc.get_available(), req.user_tier, intent)
@@ -54,7 +53,7 @@ async def chat(req: ChatRequest):
     # 4. 真调用 + 成本（价格来自 YAML）
     actual_model=None
     text=None
-    print(all_candidates)
+    print(all_candidates)   
     for  model_name in all_candidates:
         try:
             text    =  await model_svc.call(model_name, req.query, req.max_tokens)
@@ -71,7 +70,7 @@ async def chat(req: ChatRequest):
         #根据意图设置缓存过期时间
         cache.set_with_intent(cache_key, text, intent)
     cache.set(cache_key, text)
-    semantic_matcher.add(query_vector,text)
+    await semantic_matcher.aadd(req.query,text)
     return ChatResponse(
         text=text, model=actual_model, cost=round(cost, 6),
         latency=round(latency, 3), intent=intent)
